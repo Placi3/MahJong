@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Toy Story Mahjong Pro</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+        
+        body { 
+            background: #2c3e50; font-family: sans-serif; 
+            display: flex; flex-direction: column; 
+            height: 100vh; overflow: hidden; color: white;
+        }
+
+        .header { height: 50px; display: flex; justify-content: space-between; align-items: center; padding: 0 15px; background: #2c3e50; flex-shrink: 0; }
+        
+        .board { position: relative; flex: 1; width: 100%; }
+        
+        .tile {
+            position: absolute;
+            width: 14.28%; height: 12%; 
+            background: #ecf0f1; border-radius: 4px; 
+            display: flex; align-items: center; justify-content: center;
+            font-size: clamp(1.2rem, 5vw, 2.5rem); 
+            cursor: pointer; border: 2px solid #bdc3c7;
+            transition: all 0.2s; box-shadow: 2px 2px 5px rgba(0,0,0,0.3);
+            z-index: 10;
+        }
+        
+        .tile.blocked { background: #7f8c8d; opacity: 0.7; cursor: not-allowed; border-color: #555; }
+        .tile.removed { display: none; }
+
+        /* Animación de vuelo (Fly) */
+        .flying-tile {
+            position: fixed; z-index: 1000;
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            pointer-events: none;
+            box-shadow: 5px 5px 15px rgba(0,0,0,0.5);
+            background: #ecf0f1; border: 2px solid #bdc3c7; border-radius: 4px;
+            display: flex; align-items: center; justify-content: center;
+        }
+
+        /* Animación de explosión (Explode) */
+        @keyframes explode {
+            0% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.5); opacity: 0.8; }
+            100% { transform: scale(0); opacity: 0; }
+        }
+        .exploding { animation: explode 0.5s ease-out forwards; }
+
+        .tray { height: 12%; min-height: 70px; background: #34495e; display: flex; align-items: center; justify-content: center; gap: 10px; padding: 10px; border-top: 4px solid #2c3e50; flex-shrink: 0; }
+        .tray-slot { width: 14.28%; aspect-ratio: 1 / 1; background: #ecf0f1; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: clamp(1.2rem, 5vw, 2.5rem); border: 2px dashed #95a5a6; }
+
+        #overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(44, 62, 80, 0.95); display: none; flex-direction: column; align-items: center; justify-content: center; z-index: 200; }
+        button { padding: 15px 30px; font-size: 1.2rem; background: #27ae60; color: white; border: none; border-radius: 8px; cursor: pointer; }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1>Toy Story Mahjong</h1>
+        <div id="level-display">Nivel 1</div>
+    </div>
+    
+    <div class="board" id="board"></div>
+    <div class="tray" id="tray"></div>
+
+    <div id="overlay">
+        <h2 id="msg">¡Nivel Completado!</h2>
+        <button onclick="nextLevel()">Siguiente Nivel</button>
+    </div>
+
+    <script>
+        let currentLevel = 1;
+        const emojis = ['🤠', '🐴', '🚀', '👽', '🦖', '🐖', '🥔', '🤖', '👾', '💫', '🧸', '🎈', '🎯', '🎲', '🧱'];
+        const boardElement = document.getElementById('board');
+        const trayElement = document.getElementById('tray');
+        
+        let boardData = []; 
+        let trayData = [];
+        let isAnimating = false; // Bloquea clics durante animaciones
+
+        function getLayout(level) {
+            let layout = [];
+            if (level === 1) {
+                for(let y=0; y<7; y++) for(let x=0; x<7; x++) layout.push({ x, y, z: 0 });
+            } else {
+                for(let y=0; y<7; y++) for(let x=0; x<7; x++) layout.push({ x, y, z: 0 });
+                for(let y=2; y<5; y++) for(let x=2; x<5; x++) layout.push({ x: x+0.3, y: y+0.3, z: 1 });
+            }
+            return layout;
+        }
+
+        function initGame() {
+            document.getElementById('overlay').style.display = 'none';
+            document.getElementById('level-display').innerText = `Nivel ${currentLevel}`;
+            const layout = getLayout(currentLevel);
+            let deck = [];
+            for(let i=0; i<layout.length/2; i++) deck.push(emojis[i % emojis.length], emojis[i % emojis.length]);
+            deck.sort(() => Math.random() - 0.5);
+            
+            boardData = layout.map((pos, i) => ({ id: i, emoji: deck[i], x: pos.x, y: pos.y, z: pos.z, removed: false }));
+            trayData = [];
+            renderBoard();
+            renderTray();
+        }
+
+        function renderBoard() {
+            boardElement.innerHTML = '';
+            boardData.forEach((tile) => {
+                if(tile.removed) return;
+                const el = document.createElement('div');
+                el.className = 'tile';
+                el.innerText = tile.emoji;
+                el.style.left = (tile.x * 14.28) + "%"; 
+                el.style.top = (tile.y * 12) + "%";
+                el.style.zIndex = tile.z;
+                if (isBlocked(tile)) el.classList.add('blocked');
+                el.onclick = () => selectTile(tile.id, el);
+                boardElement.appendChild(el);
+            });
+        }
+
+        // Nueva función: Animación de vuelo
+        async function animateFly(element, targetIndex) {
+            const startRect = element.getBoundingClientRect();
+            const traySlots = document.querySelectorAll('.tray-slot');
+            const endRect = traySlots[targetIndex].getBoundingClientRect();
+
+            const flyer = document.createElement('div');
+            flyer.className = 'flying-tile';
+            flyer.innerText = element.innerText;
+            flyer.style.width = startRect.width + 'px';
+            flyer.style.height = startRect.height + 'px';
+            flyer.style.left = startRect.left + 'px';
+            flyer.style.top = startRect.top + 'px';
+            flyer.style.fontSize = window.getComputedStyle(element).fontSize;
+            document.body.appendChild(flyer);
+
+            // Forzar reflow para iniciar animación
+            requestAnimationFrame(() => {
+                flyer.style.left = endRect.left + 'px';
+                flyer.style.top = endRect.top + 'px';
+            });
+
+            return new Promise(resolve => setTimeout(resolve, 400));
+        }
+
+        async function selectTile(id, element) {
+            if (isAnimating || isBlocked(boardData.find(t=>t.id===id)) || trayData.length >= 4) return;
+            
+            isAnimating = true;
+            const tile = boardData.find(t => t.id === id);
+            
+            // 1. Animamos el vuelo
+            await animateFly(element, trayData.length);
+            document.querySelector('.flying-tile').remove();
+            
+            // 2. Actualizamos estado
+            tile.removed = true;
+            trayData.push(tile.emoji);
+            
+            // 3. Chequeamos coincidencias
+            const counts = {};
+            trayData.forEach(e => counts[e] = (counts[e] || 0) + 1);
+            const match = Object.keys(counts).find(key => counts[key] >= 2);
+            
+            if (match) {
+                // Animación de explosión
+                const slots = document.querySelectorAll('.tray-slot');
+                const firstIdx = trayData.indexOf(match);
+                const secondIdx = trayData.lastIndexOf(match);
+                
+                slots[firstIdx].classList.add('exploding');
+                slots[secondIdx].classList.add('exploding');
+                
+                await new Promise(r => setTimeout(r, 500));
+                
+                trayData.splice(secondIdx, 1);
+                trayData.splice(firstIdx, 1);
+            }
+
+            renderBoard();
+            renderTray();
+            isAnimating = false;
+
+            if (boardData.every(t => t.removed)) {
+                document.getElementById('msg').innerText = "¡Nivel Completado!";
+                document.getElementById('overlay').style.display = 'flex';
+            } else if (trayData.length >= 4) {
+                setTimeout(() => { alert("¡Has perdido!"); initGame(); }, 200);
+            }
+        }
+
+        function renderTray() {
+            trayElement.innerHTML = '';
+            for (let i = 0; i < 4; i++) {
+                const slot = document.createElement('div');
+                slot.className = 'tray-slot';
+                if (trayData[i]) slot.innerText = trayData[i];
+                trayElement.appendChild(slot);
+            }
+        }
+
+        // ... (Mantén las funciones isBlocked, nextLevel e initGame como estaban)
+        function isBlocked(tile) {
+            const covered = boardData.some(other => !other.removed && other.z > tile.z && Math.abs(other.x - tile.x) < 0.6 && Math.abs(other.y - tile.y) < 0.6);
+            if (covered) return true;
+            const left = boardData.find(other => !other.removed && other.z === tile.z && other.y === tile.y && Math.abs(other.x - (tile.x - 1)) < 0.2);
+            const right = boardData.find(other => !other.removed && other.z === tile.z && other.y === tile.y && Math.abs(other.x - (tile.x + 1)) < 0.2);
+            return (left && right);
+        }
+        function nextLevel() { currentLevel++; initGame(); }
+        initGame();
+    </script>
+</body>
+</html>
