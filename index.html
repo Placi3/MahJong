@@ -1,0 +1,650 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Toy Story Mahjong Pro</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+        
+        body { 
+            background: linear-gradient(135deg, #0e563f 0%, #113f32 100%);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            display: flex; flex-direction: column; 
+            height: 100vh; overflow: hidden; color: white;
+        }
+
+        /* --- CABECERA --- */
+        .header { 
+            height: 60px; display: flex; justify-content: space-between; align-items: center; 
+            padding: 0 20px; flex-shrink: 0; margin-top: 10px;
+        }
+        .icon-btn {
+            width: 40px; height: 40px; background: #8b4513; border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            font-weight: bold; font-size: 1.2rem; box-shadow: 0 4px 0 #5c2e0b;
+            color: #ffdeb3; cursor: pointer; border: none;
+        }
+        .score { font-size: 1.3rem; font-weight: bold; color: #ffdeb3; text-shadow: 1px 1px 2px rgba(0,0,0,0.5); text-align: center; }
+        .level-text { font-size: 0.9rem; color: #a3d9a5; display: block; margin-top: -3px; }
+
+        /* --- BANDEJA (TRAY) --- */
+        .tray-container {
+            background: #4e2e16; border: 3px solid #8b5a2b; border-radius: 12px;
+            padding: 8px; margin: 10px auto; width: 92%; max-width: 400px;
+            box-shadow: inset 0 6px 10px rgba(0,0,0,0.6), 0 4px 6px rgba(0,0,0,0.3);
+            flex-shrink: 0;
+        }
+        .tray { 
+            display: flex; align-items: center; justify-content: center; gap: 10px; height: 65px; 
+        }
+        .tray-slot { 
+            width: 22%; height: 100%; background: rgba(0,0,0,0.3); 
+            border-radius: 6px; border: 1px solid rgba(0,0,0,0.5);
+            display: flex; align-items: center; justify-content: center;
+            position: relative;
+        }
+
+        /* --- TABLERO Y FICHAS --- */
+        .board { position: relative; flex: 1; width: 100%; max-width: 600px; margin: 0 auto; margin-top: 15px; }
+        
+        .tile {
+            position: absolute;
+            width: 14%; height: 10%; 
+            background: #f4f7f4; border-radius: 8px; 
+            display: flex; align-items: center; justify-content: center;
+            font-size: clamp(1.5rem, 7vw, 3rem); 
+            cursor: pointer; 
+            border: 1px solid #d0d8d3; border-bottom: none;
+            box-shadow: inset 1px 1px 2px white, 0 5px 0 #1b6332, 0 7px 5px rgba(0,0,0,0.6);
+            transition: transform 0.1s, filter 0.3s; z-index: 10;
+        }
+        .tile:active { transform: translateY(3px); box-shadow: inset 1px 1px 2px white, 0 2px 0 #1b6332, 0 3px 3px rgba(0,0,0,0.6); }
+        
+        /* Ficha dentro de la bandeja */
+        .tile.in-tray {
+            position: relative; width: 100%; height: 100%; left: 0 !important; top: 0 !important;
+            box-shadow: inset 1px 1px 2px white, 0 3px 0 #1b6332, 0 4px 3px rgba(0,0,0,0.5);
+            font-size: clamp(1.2rem, 5vw, 2rem); z-index: 1; pointer-events: none;
+            background: #f4f7f4; 
+        }
+
+        /* Ficha bloqueada */
+        .tile.blocked { filter: brightness(0.6); cursor: not-allowed; }
+        .tile.removed { display: none; }
+
+        /* Ficha Oculta (Bocabajo) */
+        .tile.hidden-tile {
+            background: #c38446;
+            border: 1px solid #8b4513;
+            box-shadow: inset 1px 1px 2px rgba(255,255,255,0.3), 0 5px 0 #5c2e0b, 0 7px 5px rgba(0,0,0,0.6);
+            color: transparent; 
+            background-image: repeating-linear-gradient(45deg, rgba(0,0,0,0.05) 0px, rgba(0,0,0,0.05) 2px, transparent 2px, transparent 4px);
+        }
+        .tile.hidden-tile.revealed {
+            background: #f4f7f4;
+            color: initial;
+            border: 1px solid #d0d8d3;
+            box-shadow: inset 1px 1px 2px white, 0 5px 0 #1b6332, 0 7px 5px rgba(0,0,0,0.6);
+        }
+
+        /* Animaciones generales */
+        @keyframes pulse-hint {
+            0% { transform: scale(1); box-shadow: 0 0 10px #f1c40f, inset 1px 1px 2px white, 0 5px 0 #1b6332; z-index: 100;}
+            50% { transform: scale(1.15); box-shadow: 0 0 30px #f1c40f, inset 1px 1px 2px white, 0 5px 0 #1b6332; z-index: 100;}
+            100% { transform: scale(1); box-shadow: 0 0 10px #f1c40f, inset 1px 1px 2px white, 0 5px 0 #1b6332; z-index: 100;}
+        }
+        .tile.hint-active { animation: pulse-hint 1s infinite; }
+
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-5px); }
+            75% { transform: translateX(5px); }
+        }
+        .shake-active { animation: shake 0.2s; }
+
+        .flying-tile {
+            position: fixed; z-index: 1000; pointer-events: none;
+            background: #f4f7f4; border-radius: 8px; border: 1px solid #d0d8d3; border-bottom: none;
+            box-shadow: 0 5px 0 #1b6332, 0 10px 15px rgba(0,0,0,0.5);
+            display: flex; align-items: center; justify-content: center; color: initial;
+            transition: all 0.15s cubic-bezier(0.2, 0.8, 0.2, 1);
+        }
+
+        @keyframes explode {
+            0% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.3); opacity: 0.8; filter: brightness(1.5); }
+            100% { transform: scale(0); opacity: 0; }
+        }
+        .exploding { animation: explode 0.25s ease-out forwards !important; }
+
+        /* --- BARRA INFERIOR (BOTONES) --- */
+        .bottom-bar {
+            height: 80px; display: flex; justify-content: center; align-items: center; gap: 25px;
+            padding-bottom: 20px; flex-shrink: 0;
+        }
+        .power-btn {
+            width: 60px; height: 60px; background: #6b3410; border-radius: 50%;
+            border: 2px solid #8b4513; box-shadow: 0 4px 0 #3a1c08, 0 6px 5px rgba(0,0,0,0.5);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 1.8rem; cursor: pointer; position: relative; color: #ffdeb3;
+            transition: filter 0.2s;
+        }
+        .power-btn:active:not(:disabled) { transform: translateY(3px); box-shadow: 0 1px 0 #3a1c08, 0 2px 3px rgba(0,0,0,0.5); }
+        .power-btn:disabled { filter: grayscale(1); cursor: not-allowed; box-shadow: 0 2px 0 #3a1c08; transform: translateY(2px); }
+        .badge {
+            position: absolute; top: -5px; right: -5px; background: #e74c3c; color: white;
+            font-size: 0.8rem; font-weight: bold; width: 24px; height: 24px;
+            border-radius: 50%; display: flex; align-items: center; justify-content: center;
+            border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        }
+
+        /* Pantallas superpuestas */
+        #overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(14, 86, 63, 0.95); display: none; flex-direction: column; align-items: center; justify-content: center; z-index: 200; }
+        #overlay h2 { font-size: 2.5rem; margin-bottom: 20px; text-shadow: 2px 2px 4px rgba(0,0,0,0.5); text-align: center;}
+        .action-btn { padding: 15px 40px; font-size: 1.5rem; font-weight: bold; background: #f1c40f; color: #8b4513; border: none; border-radius: 30px; cursor: pointer; box-shadow: 0 5px 0 #d4ac0d; transition: transform 0.1s; }
+        .action-btn:active { transform: translateY(3px); box-shadow: 0 2px 0 #d4ac0d; }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <button class="icon-btn">←</button>
+        <div class="score">
+            <span id="level-display">Nivel 1</span>
+            <span class="level-text" id="iq-display">IQ: 40</span>
+        </div>
+        <button class="icon-btn">≡</button>
+    </div>
+    
+    <div class="tray-container">
+        <div class="tray" id="tray"></div>
+    </div>
+
+    <div class="board" id="board"></div>
+
+    <div class="bottom-bar">
+        <button class="power-btn" onclick="useShuffle()" id="btn-shuffle">🔀 <span class="badge" id="badge-shuffle">3</span></button>
+        <button class="power-btn" onclick="useHint()" id="btn-hint">💡 <span class="badge" id="badge-hint">5</span></button>
+        <button class="power-btn" onclick="useUndo()" id="btn-undo">↩️ <span class="badge" id="badge-undo">5</span></button>
+    </div>
+
+    <div id="overlay">
+        <h2 id="msg">¡Nivel Completado!</h2>
+        <button class="action-btn" id="overlay-btn" onclick="nextLevel()">Siguiente Nivel</button>
+    </div>
+
+    <script>
+        let currentLevel = 1;
+        const emojis = ['🤠', '🚀', '👽', '🦖', '🐖', '🥔', '🤖', '👾', '🧸', '🎈', '🎲', '🧱', '🐴', '💫', '🌟', '🎸'];
+        const boardElement = document.getElementById('board');
+        const trayElement = document.getElementById('tray');
+        
+        let boardData = []; 
+        let trayData = [];
+        let isProcessingMatch = false;
+
+        let powers = { shuffle: 3, hint: 5, undo: 5 };
+
+        // Plantillas
+        const templates = [
+            {z:0, minX:0, maxX:5, minY:0, maxY:7},
+            {z:1, minX:0, maxX:5, minY:1, maxY:6},
+            {z:2, minX:1, maxX:4, minY:2, maxY:5},
+            {z:3, minX:1, maxX:4, minY:3, maxY:4},
+            {z:4, minX:2, maxX:3, minY:3, maxY:4} 
+        ];
+
+        /* --- MOTOR DE AUDIO GENERATIVO (Web Audio API) --- */
+        let audioCtx;
+        let audioInitialized = false;
+
+        function initAudio() {
+            window.AudioContext = window.AudioContext || window.webkitAudioContext;
+            audioCtx = new AudioContext();
+            
+            // Iniciar ambiente de Jungla
+            const ambientGain = audioCtx.createGain();
+            ambientGain.gain.value = 0.12; // Volumen suave
+            ambientGain.connect(audioCtx.destination);
+
+            // Río (Ruido Blanco Filtrado)
+            const bufferSize = audioCtx.sampleRate * 2;
+            const noiseBuffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+            const output = noiseBuffer.getChannelData(0);
+            for (let i = 0; i < bufferSize; i++) output[i] = Math.random() * 2 - 1;
+            
+            const whiteNoise = audioCtx.createBufferSource();
+            whiteNoise.buffer = noiseBuffer;
+            whiteNoise.loop = true;
+
+            const filter = audioCtx.createBiquadFilter();
+            filter.type = 'lowpass';
+            filter.frequency.value = 350; 
+
+            whiteNoise.connect(filter);
+            filter.connect(ambientGain);
+            whiteNoise.start();
+
+            // Insectos
+            setInterval(() => {
+                if(Math.random() > 0.4) {
+                    const osc = audioCtx.createOscillator();
+                    const gain = audioCtx.createGain();
+                    osc.connect(gain); gain.connect(ambientGain);
+                    osc.type = 'square';
+                    osc.frequency.value = 3000 + Math.random() * 3000;
+                    gain.gain.setValueAtTime(0, audioCtx.currentTime);
+                    gain.gain.linearRampToValueAtTime(0.02, audioCtx.currentTime + 0.05);
+                    gain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.15);
+                    osc.start(); osc.stop(audioCtx.currentTime + 0.15);
+                }
+            }, 600);
+            
+            // Pájaros
+            setInterval(() => {
+                if(Math.random() > 0.6) {
+                    const osc = audioCtx.createOscillator();
+                    const gain = audioCtx.createGain();
+                    osc.connect(gain); gain.connect(ambientGain);
+                    osc.type = 'sine';
+                    const startFreq = 1500 + Math.random() * 1000;
+                    osc.frequency.setValueAtTime(startFreq, audioCtx.currentTime);
+                    osc.frequency.exponentialRampToValueAtTime(startFreq + 500, audioCtx.currentTime + 0.1);
+                    osc.frequency.exponentialRampToValueAtTime(startFreq - 500, audioCtx.currentTime + 0.3);
+                    gain.gain.setValueAtTime(0, audioCtx.currentTime);
+                    gain.gain.linearRampToValueAtTime(0.1, audioCtx.currentTime + 0.1);
+                    gain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.3);
+                    osc.start(); osc.stop(audioCtx.currentTime + 0.3);
+                }
+            }, 3500);
+        }
+
+        function playSound(type) {
+            if (!audioCtx || audioCtx.state === 'suspended') return;
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.connect(gain); gain.connect(audioCtx.destination);
+            const now = audioCtx.currentTime;
+
+            if (type === 'blocked') {
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(120, now);
+                osc.frequency.exponentialRampToValueAtTime(40, now + 0.15);
+                gain.gain.setValueAtTime(0.3, now);
+                gain.gain.linearRampToValueAtTime(0, now + 0.15);
+                osc.start(now); osc.stop(now + 0.15);
+            } else if (type === 'move') {
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(700, now);
+                osc.frequency.exponentialRampToValueAtTime(200, now + 0.1);
+                gain.gain.setValueAtTime(0.5, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+                osc.start(now); osc.stop(now + 0.1);
+            } else if (type === 'match') {
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(523.25, now);
+                osc.frequency.setValueAtTime(783.99, now + 0.1);
+                gain.gain.setValueAtTime(0.4, now);
+                gain.gain.linearRampToValueAtTime(0.4, now + 0.1);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+                osc.start(now); osc.stop(now + 0.3);
+            }
+        }
+
+        // Inicializar audio en la primera interacción (Regla de navegadores)
+        document.addEventListener('pointerdown', () => {
+            if (!audioInitialized) { audioInitialized = true; initAudio(); }
+        }, { once: true });
+
+
+        /* --- LÓGICA DEL JUEGO --- */
+        function getLayout(level) {
+            let layout = [];
+            if (level === 1) {
+                return [
+                    {x: 1, y: 3, z: 0}, {x: 2, y: 3, z: 0}, {x: 3, y: 3, z: 0}, {x: 4, y: 3, z: 0},
+                    {x: 1, y: 4, z: 0}, {x: 2, y: 4, z: 0}, {x: 3, y: 4, z: 0}, {x: 4, y: 4, z: 0}
+                ];
+            }
+            let pairs = Math.min(6 + Math.floor(level * 1.2), 50); 
+            let totalTiles = pairs * 2;
+            for (let layer of templates) {
+                for (let y = layer.minY; y <= layer.maxY; y++) {
+                    for (let x = layer.minX; x <= layer.maxX; x++) layout.push({x, y, z: layer.z});
+                }
+            }
+            return layout.slice(0, totalTiles);
+        }
+
+        function initGame() {
+            document.getElementById('overlay').style.display = 'none';
+            document.getElementById('level-display').innerText = `Nivel ${currentLevel}`;
+            document.getElementById('iq-display').innerText = `IQ: ${40 + currentLevel * 5}`;
+            
+            updateBadges();
+
+            const layout = getLayout(currentLevel);
+            let deck = [];
+            for(let i=0; i<layout.length/2; i++) {
+                let emoji = emojis[i % emojis.length];
+                deck.push(emoji, emoji);
+            }
+            deck.sort(() => Math.random() - 0.5);
+            
+            boardData = layout.map((pos, i) => {
+                let isHidden = (currentLevel >= 20 && Math.random() < 0.25);
+                return { 
+                    id: i, emoji: deck[i], x: pos.x, y: pos.y, z: pos.z, 
+                    removed: false, hidden: isHidden, revealed: false
+                };
+            });
+            
+            trayData = [];
+            renderBoard();
+            renderTray();
+        }
+
+        function renderBoard() {
+            boardElement.innerHTML = '';
+            boardData.forEach((tile) => {
+                if(tile.removed) return;
+                const el = document.createElement('div');
+                el.className = 'tile';
+                el.id = 'tile-' + tile.id;
+                
+                if (tile.hidden && !tile.revealed) {
+                    el.classList.add('hidden-tile');
+                    el.innerText = '';
+                } else {
+                    if (tile.hidden && tile.revealed) el.classList.add('revealed');
+                    el.innerText = tile.emoji;
+                }
+                
+                el.style.left = (tile.x * 14 + 8) + "%"; 
+                el.style.top = (tile.y * 11 + 2 - tile.z * 1.5) + "%";
+                el.style.zIndex = tile.z;
+                
+                if (isBlocked(tile)) el.classList.add('blocked');
+                
+                // Evento ágil
+                el.onpointerdown = (e) => {
+                    e.preventDefault(); 
+                    selectTile(tile.id, el);
+                };
+                boardElement.appendChild(el);
+            });
+        }
+
+        function startAnimateFly(element, tileId, targetIndex) {
+            return new Promise(resolve => {
+                const startRect = element.getBoundingClientRect();
+                const traySlots = document.querySelectorAll('.tray-slot');
+                const endRect = traySlots[targetIndex].getBoundingClientRect();
+
+                const flyer = document.createElement('div');
+                flyer.className = 'flying-tile';
+                flyer.id = 'flyer-' + tileId;
+                flyer.innerText = element.innerText || boardData.find(t=>t.id === tileId).emoji;
+                flyer.style.width = startRect.width + 'px';
+                flyer.style.height = startRect.height + 'px';
+                flyer.style.left = startRect.left + 'px';
+                flyer.style.top = startRect.top + 'px';
+                flyer.style.fontSize = window.getComputedStyle(element).fontSize;
+                document.body.appendChild(flyer);
+
+                // Forzar reflow
+                flyer.getBoundingClientRect();
+
+                // Cambiar destino para iniciar vuelo ágil
+                flyer.style.left = endRect.left + 'px';
+                flyer.style.top = endRect.top + 'px';
+                flyer.style.width = endRect.width + 'px';
+                flyer.style.height = endRect.height + 'px';
+
+                setTimeout(() => {
+                    flyer.remove();
+                    resolve();
+                }, 150); // Tiempo de vuelo drásticamente reducido (150ms)
+            });
+        }
+
+        function updateFlyingTilesDestinations() {
+            const traySlots = document.querySelectorAll('.tray-slot');
+            trayData.forEach((item, index) => {
+                if (item.isFlying) {
+                    const flyer = document.getElementById('flyer-' + item.id);
+                    if (flyer && traySlots[index]) {
+                        const endRect = traySlots[index].getBoundingClientRect();
+                        flyer.style.left = endRect.left + 'px';
+                        flyer.style.top = endRect.top + 'px';
+                    }
+                }
+            });
+        }
+
+        async function selectTile(id, element) {
+            if (trayData.length >= 4) return;
+            
+            const tile = boardData.find(t => t.id === id);
+            
+            if (isBlocked(tile)) {
+                playSound('blocked');
+                element.classList.remove('shake-active');
+                void element.offsetWidth; // reiniciar animación css
+                element.classList.add('shake-active');
+                return;
+            }
+
+            if (tile.hidden && !tile.revealed) {
+                tile.revealed = true;
+                renderBoard();
+                setTimeout(() => {
+                    const t = boardData.find(x => x.id === id);
+                    if (t && t.revealed && !t.removed) { t.revealed = false; renderBoard(); }
+                }, 3000); 
+                return;
+            }
+            
+            playSound('move');
+            tile.removed = true;
+            
+            // Insertar de inmediato (para no bloquear nuevos clics)
+            const trayItem = { id: tile.id, emoji: tile.emoji, time: Date.now(), isFlying: true, isExploding: false };
+            trayData.push(trayItem);
+            trayData.sort((a, b) => a.emoji.localeCompare(b.emoji));
+            
+            renderBoard();
+            renderTray();
+            
+            const targetIndex = trayData.findIndex(t => t.id === tile.id);
+            updateFlyingTilesDestinations(); // Actualiza rutas de otros en vuelo si se ordenaron
+
+            startAnimateFly(element, tile.id, targetIndex).then(async () => {
+                trayItem.isFlying = false;
+                renderTray(); 
+                await processMatches();
+            });
+
+            document.querySelectorAll('.hint-active').forEach(el => el.classList.remove('hint-active'));
+        }
+
+        async function processMatches() {
+            if (isProcessingMatch) return;
+            isProcessingMatch = true;
+
+            let matchFound = true;
+            while (matchFound) {
+                matchFound = false;
+                const counts = {};
+                
+                const landed = trayData.filter(t => !t.isFlying && !t.isExploding);
+                landed.forEach(item => counts[item.emoji] = (counts[item.emoji] || 0) + 1);
+                const matchEmoji = Object.keys(counts).find(key => counts[key] >= 2);
+
+                if (matchEmoji) {
+                    matchFound = true;
+                    playSound('match');
+                    
+                    // Marcar para explosion
+                    trayData.forEach(item => {
+                        if (item.emoji === matchEmoji && !item.isFlying) {
+                            item.isExploding = true;
+                        }
+                    });
+                    
+                    renderTray();
+                    
+                    await new Promise(r => setTimeout(r, 250)); // Explosión ágil
+
+                    let removedCount = 0;
+                    trayData = trayData.filter(item => {
+                        if (item.emoji === matchEmoji && item.isExploding && removedCount < 2) {
+                            removedCount++; return false;
+                        }
+                        return true;
+                    });
+                    renderTray();
+                }
+            }
+
+            isProcessingMatch = false;
+            checkGameState();
+        }
+
+        function checkGameState() {
+            if (boardData.every(t => t.removed)) {
+                showOverlay("¡Increíble!", "Siguiente Nivel", () => { currentLevel++; initGame(); });
+            } else if (trayData.length >= 4 && trayData.every(t => !t.isFlying && !t.isExploding)) {
+                setTimeout(() => showOverlay("Sin espacio...", "Reintentar", initGame), 200);
+            }
+        }
+
+        function renderTray() {
+            trayElement.innerHTML = '';
+            for (let i = 0; i < 4; i++) {
+                const slot = document.createElement('div');
+                slot.className = 'tray-slot';
+                
+                if (trayData[i]) {
+                    const miniTile = document.createElement('div');
+                    miniTile.className = 'tile in-tray';
+                    miniTile.innerText = trayData[i].emoji;
+                    
+                    // Oculta la ficha si está en pleno vuelo hacia aquí
+                    if (trayData[i].isFlying) miniTile.style.opacity = '0';
+                    if (trayData[i].isExploding) miniTile.classList.add('exploding');
+                    
+                    slot.appendChild(miniTile);
+                }
+                trayElement.appendChild(slot);
+            }
+        }
+
+        function isBlocked(tile) {
+            const covered = boardData.some(other => 
+                !other.removed && other.z > tile.z && 
+                Math.abs(other.x - tile.x) < 0.8 && Math.abs(other.y - tile.y) < 0.8
+            );
+            if (covered) return true;
+
+            const leftBlocked = boardData.some(other => 
+                !other.removed && other.z === tile.z && 
+                Math.abs(other.y - tile.y) < 0.5 && Math.abs(other.x - (tile.x - 1)) < 0.5 
+            );
+
+            const rightBlocked = boardData.some(other => 
+                !other.removed && other.z === tile.z && 
+                Math.abs(other.y - tile.y) < 0.5 && Math.abs(other.x - (tile.x + 1)) < 0.5 
+            );
+
+            return leftBlocked && rightBlocked;
+        }
+
+        /* --- PODERES (AYUDAS) --- */
+        function updateBadges() {
+            document.getElementById('badge-shuffle').innerText = powers.shuffle;
+            document.getElementById('btn-shuffle').disabled = powers.shuffle <= 0;
+            
+            document.getElementById('badge-hint').innerText = powers.hint;
+            document.getElementById('btn-hint').disabled = powers.hint <= 0;
+            
+            document.getElementById('badge-undo').innerText = powers.undo;
+            document.getElementById('btn-undo').disabled = powers.undo <= 0;
+        }
+
+        // Se previenen ayudas si hay fichas en vuelo para evitar conflictos visuales
+        function isBusy() { return trayData.some(t => t.isFlying) || isProcessingMatch; }
+
+        function useShuffle() {
+            if (powers.shuffle <= 0 || isBusy()) return;
+            powers.shuffle--;
+            updateBadges();
+
+            let activeTiles = boardData.filter(t => !t.removed);
+            let activeEmojis = activeTiles.map(t => t.emoji);
+            activeEmojis.sort(() => Math.random() - 0.5);
+            
+            activeTiles.forEach((t, index) => {
+                t.emoji = activeEmojis[index];
+                if (t.hidden) t.revealed = false; 
+            });
+
+            renderBoard();
+        }
+
+        function useHint() {
+            if (powers.hint <= 0 || isBusy()) return;
+            
+            let freeTiles = boardData.filter(t => !t.removed && !isBlocked(t));
+            let found = false;
+
+            for(let i=0; i<freeTiles.length; i++) {
+                for(let j=i+1; j<freeTiles.length; j++) {
+                    if(freeTiles[i].emoji === freeTiles[j].emoji) {
+                        let el1 = document.getElementById('tile-' + freeTiles[i].id);
+                        let el2 = document.getElementById('tile-' + freeTiles[j].id);
+                        if(el1) el1.classList.add('hint-active');
+                        if(el2) el2.classList.add('hint-active');
+                        found = true; break;
+                    }
+                }
+                if(found) break;
+            }
+
+            if (found) {
+                powers.hint--; updateBadges();
+            } else {
+                alert("No hay parejas visibles a la vista. ¡Prueba a usar la herramienta Mezclar!");
+            }
+        }
+
+        function useUndo() {
+            if (powers.undo <= 0 || trayData.length === 0 || isBusy()) return;
+            powers.undo--; updateBadges();
+
+            let lastAdded = trayData.reduce((prev, curr) => (prev.time > curr.time) ? prev : curr);
+            trayData = trayData.filter(t => t.id !== lastAdded.id);
+            
+            let tileToRestore = boardData.find(t => t.id === lastAdded.id);
+            if (tileToRestore) {
+                tileToRestore.removed = false;
+                if (tileToRestore.hidden) tileToRestore.revealed = false;
+            }
+
+            renderBoard(); renderTray();
+        }
+
+        function nextLevel() { currentLevel++; initGame(); }
+
+        function showOverlay(msg, btnText, action) {
+            document.getElementById('msg').innerText = msg;
+            const btn = document.getElementById('overlay-btn');
+            btn.innerText = btnText; btn.onclick = action;
+            document.getElementById('overlay').style.display = 'flex';
+        }
+
+        initGame();
+    </script>
+</body>
+</html>
